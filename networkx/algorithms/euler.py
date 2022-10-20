@@ -382,7 +382,11 @@ def eulerian_path(G, source=None, keys=False):
 
 @not_implemented_for("directed")
 def eulerize(G):
-    """Transforms a graph into an Eulerian graph
+    """Transforms a graph into an Eulerian graph.
+        If G is Eulerian the result is G, otherwise
+        the result is a smallest (in terms of the number
+        of edges) multigraph whose underlying
+        simple graph is G.
 
     Parameters
     ----------
@@ -434,13 +438,19 @@ def eulerize(G):
         for m, n in combinations(odd_degree_nodes, 2)
     ]
 
-    # use inverse path lengths as edge-weights in a new graph
+    # get the maximum length (in terms of the number of vertices)
+    # of a shortest path between a pair of vertices of odd degree in G
+    max_odd_path_length = max(
+        map(lambda path: len(next(iter(path[1].values()))), odd_deg_pairs_paths)
+    )
+
+    # use "max_odd_path_length - len(P) + 1" as edge-weights in a new graph
     # store the paths in the graph for easy indexing later
     Gp = nx.Graph()
     for n, Ps in odd_deg_pairs_paths:
         for m, P in Ps.items():
             if n != m:
-                Gp.add_edge(m, n, weight=1 / len(P), path=P)
+                Gp.add_edge(m, n, weight=max_odd_path_length - len(P) + 1, path=P)
 
     # find the minimum weight matching of edges in the weighted graph
     best_matching = nx.Graph(list(nx.max_weight_matching(Gp)))
