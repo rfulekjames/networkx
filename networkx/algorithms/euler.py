@@ -4,6 +4,7 @@ Eulerian circuits and graphs.
 from itertools import combinations
 
 import networkx as nx
+import networkx.algorithms.shortest_paths.weighted as weighted
 
 from ..utils import arbitrary_element, not_implemented_for
 
@@ -381,17 +382,27 @@ def eulerian_path(G, source=None, keys=False):
 
 
 @not_implemented_for("directed")
-def eulerize(G):
+def eulerize(G, positive_weight=None):
     """Transforms a graph into an Eulerian graph.
         If G is Eulerian the result is G, otherwise
-        the result is a smallest (in terms of the number
-        of edges) multigraph whose underlying
+        the result is a smallest (in terms of the sum of 
+        of edge-weights) multigraph whose underlying
         simple graph is G.
 
     Parameters
     ----------
     G : NetworkX graph
        An undirected graph
+
+    weight : None, string or function, optional (default = None)
+        If None, every edge has weight/distance/cost 1.
+        If a string, use this edge attribute as the edge weight.
+        Any edge attribute not present defaults to 1.
+        If this is a function, the weight of an edge is the value
+        returned by the function. The function must accept exactly
+        three positional arguments: the two endpoints of an edge and
+        the dictionary of edge attributes for that edge.
+        The function must return a positive number.
 
     Returns
     -------
@@ -401,6 +412,8 @@ def eulerize(G):
     ------
     NetworkXError
        If the graph is not connected.
+    NetworkXPointlessConcept
+        If weights of an edge weight are non-positive.
 
     See Also
     --------
@@ -427,6 +440,11 @@ def eulerize(G):
         raise nx.NetworkXPointlessConcept("Cannot Eulerize null graph")
     if not nx.is_connected(G):
         raise nx.NetworkXError("G is not connected")
+    if positive_weight:
+        weight_func = weighted._weight_function(G, positive_weight)
+        for u, v in G.edges():
+            if weight_func(u, v, G[u][v]) <= 0:
+                raise nx.NetworkXPointlessConcept("Edge weights must be positive")
     odd_degree_nodes = [n for n, d in G.degree() if d % 2 == 1]
     G = nx.MultiGraph(G)
     if len(odd_degree_nodes) == 0:
@@ -434,14 +452,25 @@ def eulerize(G):
 
     # get all shortest paths between vertices of odd degree
     odd_deg_pairs_paths = [
-        (m, {n: nx.shortest_path(G, source=m, target=n)})
+        (m, {n: nx.shortest_path(G, weight=positive_weight, source=m, target=n)})
         for m, n in combinations(odd_degree_nodes, 2)
     ]
 
     # get the maximum length (in terms of the number of vertices)
     # of a shortest path between a pair of vertices of odd degree in G
+    weight_func = weighted._weight_function(G, positive_weight)
+
+    def get_path_length(path):
+        return sum(
+            weight_func(path[i - 1], path[i], G[path[i - 1]][path[i]])
+            for i in range(1, len(path))
+        )
+
     max_odd_path_length = max(
-        map(lambda path: len(next(iter(path[1].values()))), odd_deg_pairs_paths)
+        map(
+            lambda path: get_path_length(next(iter(path[1].values()))),
+            odd_deg_pairs_paths,
+        )
     )
 
     # use "max_odd_path_length - len(P) + 1" as edge-weights in a new graph
